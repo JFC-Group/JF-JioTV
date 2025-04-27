@@ -1,0 +1,58 @@
+name: Build JF-JioTV for JF-mips32r2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: JioTV-Go/jiotv_go
+          ref: 'main'
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+
+      - name: Get CA certificates
+        continue-on-error: true
+        run: curl -o assets/cacert/cacert.pem https://curl.se/ca/cacert.pem
+
+      - name: Download mips32r2 toolchain
+        run: wget -O toolchain.tar https://github.com/JFC-Group/JF-Buildroot/releases/download/2015.08.1/mipsel-buildroot-linux-uclibc-toolchain-2015.08.1.tar && tar -xf toolchain.tar && rm toolchain.tar
+
+      - name: Build
+        run: LD_LIBRARY_PATH=$(pwd)/mipsel-buildroot-linux-uclibc-toolchain-2015.08.1/usr/lib CC=$(pwd)/mipsel-buildroot-linux-uclibc-toolchain-2015.08.1/usr/bin/mipsel-buildroot-linux-uclibc-gcc GOARCH=mipsle GOOS=linux go build -o jiotv_go-jiofiber-mips32r2 .
+
+      - name: Release version
+        id: release_version
+        run: |
+          echo "release_version=$(git tag --sort=-v:refname | head -n 1)" >> "$GITHUB_OUTPUT"
+      
+      - name: Generate tag name
+        id: tag
+        run: |
+          TAG_NAME="release-$(date +%Y%m%d-%H%M%S)"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release and Upload Binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            jiotv_go-jiofiber-mips32r2
+          name: JF-JioTV ${{ steps.release_version.outputs.release_version }}
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          make_latest: true
+          draft: false
+          prerelease: ${{ github.ref_name != 'main' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
