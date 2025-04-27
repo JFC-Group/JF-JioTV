@@ -13,15 +13,23 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           repository: JioTV-Go/jiotv_go
           ref: 'main'
           fetch-depth: 0
+          path: jiotv_go
+
+      - name: Apply JF-JioTV Patch
+        run: |
+          patch -d jiotv_go -p1 < patches/jiotv_go_ssl.patch
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: "go.mod"
+          go-version-file: "./jiotv_go/go.mod"
 
       - name: Get CA certificates
         continue-on-error: true
@@ -30,13 +38,23 @@ jobs:
       - name: Download mips32r2 toolchain
         run: wget -O toolchain.tar https://github.com/JFC-Group/JF-Buildroot/releases/download/2015.08.1/mipsel-buildroot-linux-uclibc-toolchain-2015.08.1.tar && tar -xf toolchain.tar && rm toolchain.tar
 
+      - name: Set environment variables
+        run: |
+          echo "$(pwd)/mipsel-buildroot-linux-uclibc-toolchain-2015.08.1/usr/bin" >> $GITHUB_PATH
+          echo "LD_LIBRARY_PATH=$(pwd)/mipsel-buildroot-linux-uclibc-toolchain-2015.08.1/usr/lib" >> $GITHUB_ENV
+          echo "CC=$(pwd)/mipsel-buildroot-linux-uclibc-toolchain-2015.08.1/usr/bin/mipsel-buildroot-linux-uclibc-gcc" >> $GITHUB_ENV
+          echo "GOARCH=mipsle" >> $GITHUB_ENV
+          echo "GOOS=linux" >> $GITHUB_ENV
+
       - name: Build
-        run: LD_LIBRARY_PATH=$(pwd)/mipsel-buildroot-linux-uclibc-toolchain-2015.08.1/usr/lib CC=$(pwd)/mipsel-buildroot-linux-uclibc-toolchain-2015.08.1/usr/bin/mipsel-buildroot-linux-uclibc-gcc GOARCH=mipsle GOOS=linux go build -o jiotv_go-jiofiber-mips32r2 .
+        run: go build -o jiotv_go-jiofiber-mips32r2 .
+        working-directory: jiotv_go
 
       - name: Release version
         id: release_version
         run: |
           echo "release_version=$(git tag --sort=-v:refname | head -n 1)" >> "$GITHUB_OUTPUT"
+        working-directory: jiotv_go
       
       - name: Generate tag name
         id: tag
@@ -48,7 +66,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            jiotv_go-jiofiber-mips32r2
+            jiotv_go/jiotv_go-jiofiber-mips32r2
           name: JF-JioTV ${{ steps.release_version.outputs.release_version }}
           tag_name: ${{ steps.tag.outputs.tag_name }}
           make_latest: true
